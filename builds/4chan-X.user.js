@@ -562,7 +562,11 @@
   $.rm = (function() {
     if ('remove' in Element.prototype) {
       return function(el) {
+        el.classList.add("lol");
+        el.addEventListener("transitionend", function () {
         return el.remove();
+        },true)
+
       };
     } else {
       return function(el) {
