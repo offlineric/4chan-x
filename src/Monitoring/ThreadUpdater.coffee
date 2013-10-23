@@ -2,8 +2,6 @@ ThreadUpdater =
   init: ->
     return if g.VIEW isnt 'thread' or !Conf['Thread Updater']
 
-    checked = if Conf['Auto Update'] then 'checked' else ''
-
     if Conf['Updater and Stats in Header']
       @dialog = sc = $.el 'span',
         innerHTML: "<span id=update-status></span><span id=update-timer title='Update now'></span>"
@@ -16,12 +14,13 @@ ThreadUpdater =
       $.addClass doc, 'float'
       $.ready => 
         $.addClass doc, 'float'
-        $.add d.body, sc    
+        $.add d.body, sc
 
     @checkPostCount = 0
 
     @timer  = $ '#update-timer', sc
     @status = $ '#update-status', sc
+    @isUpdating = Conf['Auto Update']
 
     $.on @timer,  'click', ThreadUpdater.update
     $.on @status, 'click', ThreadUpdater.update
@@ -38,7 +37,7 @@ ThreadUpdater =
         $.on input, 'change', ThreadUpdater.cb.scrollBG
         ThreadUpdater.cb.scrollBG()
       else if input.name is 'Auto Update'
-        $.on input, 'change', ThreadUpdater.update
+        $.on input, 'change', ThreadUpdater.cb.update
       subEntries.push el: el
 
     settings = $.el 'span',
@@ -55,7 +54,7 @@ ThreadUpdater =
       order: 110
       subEntries: subEntries
 
-    Thread::callbacks.push
+    Thread.callbacks.push
       name: 'Thread Updater'
       cb:   @node
 
@@ -83,17 +82,13 @@ ThreadUpdater =
     online: ->
       if ThreadUpdater.online = navigator.onLine
         ThreadUpdater.outdateCount = 0
-        ThreadUpdater.set 'timer', ThreadUpdater.getInterval()
-
-        ThreadUpdater.update()
-
+        ThreadUpdater.setInterval()
         ThreadUpdater.set 'status', null, null
-      else
-        ThreadUpdater.set 'timer', null
-        ThreadUpdater.set 'status', 'Offline', 'warning'
-      ThreadUpdater.cb.autoUpdate()
+        return
+      ThreadUpdater.set 'timer', null
+      ThreadUpdater.set 'status', 'Offline', 'warning'
     post: (e) ->
-      return unless e.detail.threadID is ThreadUpdater.thread.ID
+      return unless ThreadUpdater.isUpdating and e.detail.threadID is ThreadUpdater.thread.ID
       ThreadUpdater.outdateCount = 0
       setTimeout ThreadUpdater.update, 1000 if ThreadUpdater.seconds > 2
     checkpost: (e) ->
@@ -104,7 +99,7 @@ ThreadUpdater =
         ThreadUpdater.set 'timer', '...'
       unless g.DEAD or ThreadUpdater.foundPost or ThreadUpdater.checkPostCount >= 5
         return setTimeout ThreadUpdater.update, ++ThreadUpdater.checkPostCount * $.SECOND
-      ThreadUpdater.set 'timer', ThreadUpdater.getInterval()
+      ThreadUpdater.setInterval()
       ThreadUpdater.checkPostCount = 0
       delete ThreadUpdater.foundPost
       delete ThreadUpdater.postID
@@ -113,29 +108,24 @@ ThreadUpdater =
       # Reset the counter when we focus this tab.
       ThreadUpdater.outdateCount = 0
       if ThreadUpdater.seconds > ThreadUpdater.interval
-        ThreadUpdater.set 'timer', ThreadUpdater.getInterval()
+        ThreadUpdater.setInterval()
     scrollBG: ->
       ThreadUpdater.scrollBG = if Conf['Scroll BG']
         -> true
       else
         -> not d.hidden
-    autoUpdate: ->
-      if ThreadUpdater.online
-        ThreadUpdater.timeoutID = setTimeout ThreadUpdater.timeout, 1000
-      else
-        clearTimeout ThreadUpdater.timeoutID
     interval: ->
-      val = +@value
+      val = parseInt @value, 10
       if val < 1 then val = 1
       ThreadUpdater.interval = @value = val
       $.cb.value.call @
-    load: ->
+    load: (e) ->
       {req} = ThreadUpdater
       switch req.status
         when 200
           g.DEAD = false
           ThreadUpdater.parse JSON.parse(req.response).posts
-          ThreadUpdater.set 'timer', ThreadUpdater.getInterval()
+          ThreadUpdater.setInterval()
         when 404
           g.DEAD = true
           ThreadUpdater.set 'timer', null
@@ -147,7 +137,7 @@ ThreadUpdater =
             thread: ThreadUpdater.thread
         else
           ThreadUpdater.outdateCount++
-          ThreadUpdater.set 'timer', ThreadUpdater.getInterval()
+          ThreadUpdater.setInterval()
           [text, klass] = if req.status is 304
             [null, null]
           else
@@ -157,19 +147,20 @@ ThreadUpdater =
       if ThreadUpdater.postID
         ThreadUpdater.cb.checkpost()
 
-      delete ThreadUpdater.req
-
-  getInterval: ->
+  setInterval: ->
     i = ThreadUpdater.interval
-    j = Math.min ThreadUpdater.outdateCount, 10
+    # Math.min/max is provably slow: http://jsperf.com/math-s-min-max-vs-homemade/5
+    j = if cur = ThreadUpdater.outdateCount < 10 then cur else 10
     unless d.hidden
       # Lower the max refresh rate limit on visible tabs.
-      j = Math.min j, 7
+      j = if j < 7 then j else 7
     ThreadUpdater.seconds =
       if Conf['Optional Increase']
-        Math.max i, [0, 5, 10, 15, 20, 30, 60, 90, 120, 240, 300][j]
+        if cur = [0, 5, 10, 15, 20, 30, 60, 90, 120, 240, 300][j] > i then cur else i
       else
         i
+    ThreadUpdater.set 'timer', ThreadUpdater.seconds++
+    ThreadUpdater.count true
 
   intervalShortcut: ->
     Settings.open 'Advanced'
@@ -186,6 +177,10 @@ ThreadUpdater =
       el.textContent = text
     el.className = klass if klass isnt undefined
 
+  count: (start) ->
+    clearTimeout ThreadUpdater.timeoutID
+    ThreadUpdater.timeout() if start and ThreadUpdater.isUpdating and navigator.onLine
+
   timeout: ->
     ThreadUpdater.timeoutID = setTimeout ThreadUpdater.timeout, 1000
     unless n = --ThreadUpdater.seconds
@@ -197,16 +192,13 @@ ThreadUpdater =
       ThreadUpdater.set 'timer', n
 
   update: ->
-    return unless ThreadUpdater.online
-    ThreadUpdater.seconds = 0
+    return unless navigator.onLine
+    ThreadUpdater.count()
     if Conf['Auto Update']
       ThreadUpdater.set 'timer', '...'
     else
       ThreadUpdater.set 'timer', 'Update'
-    if ThreadUpdater.req
-      # abort() triggers onloadend, we don't want that.
-      ThreadUpdater.req.onloadend = null
-      ThreadUpdater.req.abort()
+    ThreadUpdater.req.abort() if ThreadUpdater.req
     url = "//api.4chan.org/#{ThreadUpdater.thread.board}/res/#{ThreadUpdater.thread}.json"
     ThreadUpdater.req = $.ajax url, onloadend: ThreadUpdater.cb.load,
       whenModified: true

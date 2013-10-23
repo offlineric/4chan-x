@@ -89,6 +89,10 @@ Config =
         false
         'Indicate spoilers if Remove Spoilers is enabled, or make the text appear hovered if Remove Spoiler is disabled.'
       ]
+      'Infinite Scrolling': [
+        false
+        'Add new posts to the board index upon reaching the bottom of the board.'
+      ]
 
     'Linkification':
       'Linkify': [
@@ -455,7 +459,8 @@ Config =
 #/Admin$/;highlight:moot;op:yes
 """
 
-    email: "" 
+    email: ""
+
     subject: """
 # Filter Generals on /v/:
 #/general/i;boards:v;op:only
@@ -525,7 +530,6 @@ mu-replace
 sp-replace
 tv-replace
 vp-replace
-q-replace
 [external-text:"FAQ","https://github.com/seaweedchan/4chan-x/wiki/Frequently-Asked-Questions"]
   """
 

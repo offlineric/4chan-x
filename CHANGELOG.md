@@ -1,3 +1,10 @@
+### v1.2.42 
+*2013-10-22*
+
+**Zixaphir**:
+- Better MediaCru.sh embedding
+- Infinite Scrolling
+
 ### v1.2.41 
 *2013-10-03*
 
@@ -19,17 +26,17 @@
 *2013-09-19*
 
 **seaweedchan**:
- - Fix thread updater bug introduced in last version
+- Fix thread updater bug introduced in last version
 
 ### v1.2.38 
 *2013-09-19*
 
 **MayhemYDG**:
- - Update posting cooldown timers to match 4chan settings:
-   - Cooldown may vary between inter-thread and intra-thread replies.
-   - Cooldown may vary when posting a file or not.
-   - Cooldown does not take sageing into account anymore.
-   - Timers vary across boards.
+- Update posting cooldown timers to match 4chan settings:
+  - Cooldown may vary between inter-thread and intra-thread replies.
+  - Cooldown may vary when posting a file or not.
+  - Cooldown does not take sageing into account anymore.
+  - Timers vary across boards.
 
 ### v1.2.37 
 *2013-09-12*
@@ -44,10 +51,10 @@
 - New desktop notification:
   * The QR will now warn you when you are running low on cached captchas while auto-posting.
 
- **seaweedchan**:
+**seaweedchan**:
  - Visual overhaul for gallery mode
 
- **Zixaphir**:
+**Zixaphir**:
  - Fix an issue with the file dialog randomly opening multiple times (with seaweedchan)
 ![Gallery](src/General/img/changelog/2.3.6.png)
 - Add new feature: `Gallery`.

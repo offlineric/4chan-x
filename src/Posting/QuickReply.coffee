@@ -33,7 +33,7 @@ QR =
       else
         $.ready @persist
 
-    Post::callbacks.push
+    Post.callbacks.push
       name: 'Quick Reply'
       cb:   @node
 
@@ -276,7 +276,7 @@ QR =
     init: ->
       return unless Conf['Cooldown']
       setTimers = (e) => QR.cooldown.types = e.detail
-      $.on  window, 'cooldown:timers', setTimers
+      $.on window, 'cooldown:timers', setTimers
       $.globalEval 'window.dispatchEvent(new CustomEvent("cooldown:timers", {detail: cooldowns}))'
       QR.cooldown.types or= {} # XXX tmp workaround until all pages and the catalogs get the cooldowns var.
       $.off window, 'cooldown:timers', setTimers
@@ -380,7 +380,7 @@ QR =
 
       if seconds and Conf['Cooldown Prediction'] and hasFile and upSpd
         seconds -= Math.floor post.file.size / upSpd * upSpdAccuracy
-        seconds  = Math.max seconds, 0
+        seconds  = if seconds > 0 then seconds else 0
       # Update the status when we change posting type.
       # Don't get stuck at some random number.
       # Don't interfere with progress status updates.
@@ -446,7 +446,6 @@ QR =
     e.preventDefault()
     QR.open()
     QR.handleFiles e.dataTransfer.files
-    $.addClass QR.nodes.el, 'dump'
 
   paste: (e) ->
     files = []
@@ -597,8 +596,7 @@ QR =
     lock: (lock=true) ->
       @isLocked = lock
       return unless @ is QR.selected
-      for name in ['thread', 'name', 'email', 'sub', 'com', 'fileButton', 'filename', 'spoiler', 'flag']
-        continue unless node = QR.nodes[name]
+      for name in ['thread', 'name', 'email', 'sub', 'com', 'fileButton', 'filename', 'spoiler', 'flag'] when node = QR.nodes[name]
         node.disabled = lock
       @nodes.rm.style.visibility = if lock then 'hidden' else ''
       (if lock then $.off else $.on) QR.nodes.filename.previousElementSibling, 'click', QR.openFileInput
@@ -998,9 +996,12 @@ QR =
     $.on nodes.fileExtras, 'click', (e) -> e.stopPropagation()
     $.on nodes.spoiler,    'change', -> QR.selected.nodes.spoiler.click()
     $.on nodes.fileInput,  'change', QR.handleFiles
+
     # save selected post's data
+    items = ['name', 'email', 'sub', 'com', 'filename', 'flag']
+    i = 0
     save = -> QR.selected.save @
-    for name in ['thread', 'name', 'email', 'sub', 'com', 'filename', 'flag']
+    while name = items[i++]
       continue unless node = nodes[name]
       event = if node.nodeName is 'SELECT' then 'change' else 'input'
       $.on nodes[name], event, save
@@ -1224,7 +1225,7 @@ QR =
       threadID
       postID
     }
-    $.event 'QRPostSuccessful_', {threadID, postID} 
+    $.event 'QRPostSuccessful_', {threadID, postID}
 
     # Enable auto-posting if we have stuff left to post, disable it otherwise.
     postsCount = QR.posts.length - 1

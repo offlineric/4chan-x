@@ -83,9 +83,9 @@ Main =
       'Fourchan thingies':         Fourchan
       'Emoji':                     Emoji
       'Color User IDs':            IDColor
-      'Reveal Spoilers':           RemoveSpoilers
       'Custom CSS':                CustomCSS
       'Linkify':                   Linkify
+      'Reveal Spoilers':           RemoveSpoilers
       'Resurrect Quotes':          Quotify
       'Filter':                    Filter
       'Thread Hiding Buttons':     ThreadHiding
@@ -134,6 +134,7 @@ Main =
       'Keybinds':                  Keybinds
       'Show Dice Roll':            Dice
       'Banner':                    Banner
+      'Infinite Scrolling':        InfiniScroll
 
     # c.timeEnd 'All initializations'
 
@@ -234,7 +235,7 @@ Main =
   callbackNodes: (klass, nodes) ->
     # get the nodes' length only once
     len = nodes.length
-    for callback in klass::callbacks
+    for callback in klass.callbacks
       # c.profile callback.name
       i = 0
       while i < len
@@ -242,8 +243,7 @@ Main =
         try
           callback.cb.call node
         catch err
-          unless errors
-            errors = []
+          errors = [] unless errors
           errors.push
             message: "\"#{callback.name}\" crashed on #{klass.name} No.#{node} (/#{node.board}/)."
             error: err
@@ -252,13 +252,27 @@ Main =
 
   callbackNodesDB: (klass, nodes, cb) ->
     queue = []
+    errors = null
+
+    func = (node) ->
+      for callback in klass.callbacks
+        try
+          callback.cb.call node
+        catch err
+          errors = [] unless errors
+          errors.push
+            message: "\"#{callback.name}\" crashed on #{klass.name} No.#{node} (/#{node.board}/)."
+            error: err
+      # finish
+      unless queue.length
+        Main.handleErrors errors if errors
+        cb() if cb
+
     softTask =  ->
-      task = queue.shift()
-      func = task[0]
-      args = Array::slice.call task, 1
-      func.apply func, args
+      node = queue.shift()
+      func node
       return unless queue.length
-      if (queue.length % 7) is 0
+      unless queue.length % 7
         setTimeout softTask, 0
       else
         softTask()
@@ -266,26 +280,10 @@ Main =
     # get the nodes' length only once
     len    = nodes.length
     i      = 0
-    errors = null
-
-    func = (node, i) ->
-      for callback in klass::callbacks
-        try
-          callback.cb.call node
-        catch err
-          unless errors
-            errors = []
-          errors.push
-            message: "\"#{callback.name}\" crashed on #{klass.name} No.#{node} (/#{node.board}/)."
-            error: err
-      # finish
-      if i is len
-        Main.handleErrors errors if errors
-        cb() if cb
 
     while i < len
-      node = nodes[i]
-      queue.push [func, node, ++i]
+      node = nodes[i++]
+      queue.push node
 
     softTask()
 
@@ -301,7 +299,7 @@ Main =
       else
         return
     obj.callback.isAddon = true
-    Klass::callbacks.push obj.callback
+    Klass.callbacks.push obj.callback
 
   handleErrors: (errors) ->
     unless errors instanceof Array
