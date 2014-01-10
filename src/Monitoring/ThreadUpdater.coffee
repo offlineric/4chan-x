@@ -148,18 +148,28 @@ ThreadUpdater =
         ThreadUpdater.cb.checkpost()
 
   setInterval: ->
-    i = ThreadUpdater.interval
-    # Math.min/max is provably slow: http://jsperf.com/math-s-min-max-vs-homemade/5
-    j = if cur = ThreadUpdater.outdateCount < 10 then cur else 10
-    unless d.hidden
+    i   = ThreadUpdater.interval + 1
+    
+    if Conf['Optional Increase']
       # Lower the max refresh rate limit on visible tabs.
-      j = if j < 7 then j else 7
-    ThreadUpdater.seconds =
-      if Conf['Optional Increase']
-        if cur = [0, 5, 10, 15, 20, 30, 60, 90, 120, 240, 300][j] > i then cur else i
-      else
-        i
-    ThreadUpdater.set 'timer', ThreadUpdater.seconds++
+      cur   = ThreadUpdater.outdateCount or 1
+      limit = if d.hidden then 7 else 10
+      j     = if cur <= limit then cur else limit
+
+      # 1 second to 100, 30 to 300.
+      cur = (Math.floor(i * 0.1) or 1) * j * j
+      ThreadUpdater.seconds =
+        if cur > i
+          if cur <= 300
+            cur
+          else
+            300
+        else
+          i
+    else
+      ThreadUpdater.seconds = i
+
+    ThreadUpdater.set 'timer', ThreadUpdater.seconds
     ThreadUpdater.count true
 
   intervalShortcut: ->
@@ -198,43 +208,32 @@ ThreadUpdater =
       ThreadUpdater.set 'timer', '...'
     else
       ThreadUpdater.set 'timer', 'Update'
-    ThreadUpdater.req.abort() if ThreadUpdater.req
-    url = "//api.4chan.org/#{ThreadUpdater.thread.board}/res/#{ThreadUpdater.thread}.json"
+    ThreadUpdater.req?.abort()
+    url = "//a.4cdn.org/#{ThreadUpdater.thread.board}/res/#{ThreadUpdater.thread}.json"
     ThreadUpdater.req = $.ajax url, onloadend: ThreadUpdater.cb.load,
       whenModified: true
 
-  updateThreadStatus: (title, OP) ->
-    titleLC = title.toLowerCase()
-    return if ThreadUpdater.thread["is#{title}"] is !!OP[titleLC]
-    unless ThreadUpdater.thread["is#{title}"] = !!OP[titleLC]
-      message = if title is 'Sticky'
-        'The thread is not a sticky anymore.'
+  updateThreadStatus: (type, status) ->
+    return unless hasChanged = ThreadUpdater.thread["is#{type}"] isnt status
+    ThreadUpdater.thread.setStatus type, status
+    change = if type is 'Sticky'
+      if status
+        'now a sticky'
       else
-        'The thread is not closed anymore.'
-      new Notice 'info', message, 30
-      $.rm $ ".#{titleLC}Icon", ThreadUpdater.thread.OP.nodes.info
-      return
-    message = if title is 'Sticky'
-      'The thread is now a sticky.'
+        'not a sticky anymore'
     else
-      'The thread is now closed.'
-    new Notice 'info', message, 30
-    icon = $.el 'img',
-      src: "//static.4chan.org/image/#{titleLC}.gif"
-      alt: title
-      title: title
-      className: "#{titleLC}Icon"
-    root = $ '[title="Quote this post"]', ThreadUpdater.thread.OP.nodes.info
-    if title is 'Closed'
-      root = $('.stickyIcon', ThreadUpdater.thread.OP.nodes.info) or root
-    $.after root, [$.tn(' '), icon]
+      if status
+        'now closed'
+      else
+        'not closed anymore'
+    new Notice 'info', "The thread is #{change}.", 30
 
   parse: (postObjects) ->
     OP = postObjects[0]
     Build.spoilerRange[ThreadUpdater.thread.board] = OP.custom_spoiler
 
-    ThreadUpdater.updateThreadStatus 'Sticky', OP
-    ThreadUpdater.updateThreadStatus 'Closed', OP
+    ThreadUpdater.updateThreadStatus 'Sticky', !!OP.sticky
+    ThreadUpdater.updateThreadStatus 'Closed', !!OP.closed
     ThreadUpdater.thread.postLimit = !!OP.bumplimit
     ThreadUpdater.thread.fileLimit = !!OP.imagelimit
 
@@ -255,18 +254,20 @@ ThreadUpdater =
 
     deletedPosts = []
     deletedFiles = []
+
     # Check for deleted posts/files.
     for ID, post of ThreadUpdater.thread.posts
       # XXX tmp fix for 4chan's racing condition
       # giving us false-positive dead posts.
       # continue if post.isDead
       ID = +ID
-      if post.isDead and index.contains ID
-        post.resurrect()
-      else unless index.contains ID
+
+      unless ID in index
         post.kill()
         deletedPosts.push post
-      else if post.file and !post.file.isDead and not files.contains ID
+      else if post.isDead
+        post.resurrect()
+      else if post.file and not (post.file.isDead or ID in files)
         post.kill true
         deletedFiles.push post
 
@@ -294,7 +295,7 @@ ThreadUpdater =
         continue unless posts.hasOwnProperty key
         root = post.nodes.root
         if post.cb
-          unless post.cb.call post
+          unless post.cb()
             $.add ThreadUpdater.root, root
         else
           $.add ThreadUpdater.root, root
@@ -303,7 +304,7 @@ ThreadUpdater =
         if Conf['Bottom Scroll']
           window.scrollTo 0, d.body.clientHeight
         else
-          Header.scrollToPost root if root
+          Header.scrollTo root if root
 
       $.queueTask ->
         # Enable 4chan features.

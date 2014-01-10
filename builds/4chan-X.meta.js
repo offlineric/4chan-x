@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         4chan X
-// @version      1.2.44
+// @version      1.3.0
 // @minGMVer     1.13
-// @minFFVer     22
+// @minFFVer     26
 // @namespace    4chan-X
 // @description  Cross-browser userscript for maximum lurking on 4chan.
 // @license      MIT; https://github.com/seaweedchan/4chan-x/blob/master/LICENSE 
-// @match        *://api.4chan.org/*
 // @match        *://boards.4chan.org/*
-// @match        *://images.4chan.org/*
 // @match        *://sys.4chan.org/*
+// @match        *://a.4cdn.org/*
+// @match        *://i.4cdn.org/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue

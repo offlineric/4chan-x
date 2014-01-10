@@ -1,5 +1,18 @@
 Main =
   init: ->
+    pathname = location.pathname.split '/'
+    g.BOARD  = new Board pathname[1]
+    return if g.BOARD.ID in ['z', 'fk']
+    g.VIEW   =
+      switch pathname[2]
+        when 'res'
+          'thread'
+        when 'catalog'
+          'catalog'
+        else
+          'index'
+    if g.VIEW is 'thread'
+      g.THREADID = +pathname[3]
 
     # flatten Config into Conf
     # and get saved or default values
@@ -22,34 +35,17 @@ Main =
       Main.initFeatures()
 
     $.on d, '4chanMainInit', Main.initStyle
-    $.asap (-> d.head and $('link[rel="shortcut icon"]', d.head) or d.readyState isnt 'loading'),
-      Main.initStyle
 
   initFeatures: ->
-
-    pathname = location.pathname.split '/'
-    g.BOARD  = new Board pathname[1]
-    return if g.BOARD.ID in ['z', 'fk']
-    g.VIEW   =
-      switch pathname[2]
-        when 'res'
-          'thread'
-        when 'catalog'
-          'catalog'
-        else
-          'index'
-    if g.VIEW is 'thread'
-      g.THREADID = +pathname[3]
-
     switch location.hostname
-      when 'api.4chan.org'
+      when 'a.4cdn.org'
         return
       when 'sys.4chan.org'
         Report.init()
         return
-      when 'images.4chan.org'
+      when 'i.4cdn.org'
         $.ready ->
-          if Conf['404 Redirect'] and ['4chan - Temporarily Offline', '4chan - 404 Not Found'].contains d.title
+          if Conf['404 Redirect'] and d.title in ['4chan - Temporarily Offline', '4chan - 404 Not Found']
             Redirect.init()
             pathname = location.pathname.split '/'
             URL = Redirect.to 'file',
@@ -72,13 +68,13 @@ Main =
       return
 
     # c.time 'All initializations'
-
     init
       'Polyfill':                  Polyfill
       'Redirect':                  Redirect
       'Header':                    Header
       'Catalog Links':             CatalogLinks
       'Settings':                  Settings
+      'Index Generator':           Index
       'Announcement Hiding':       PSAHiding
       'Fourchan thingies':         Fourchan
       'Emoji':                     Emoji
@@ -120,7 +116,6 @@ Main =
       'Reveal Spoiler Thumbnails': RevealSpoilers
       'Image Loading':             ImageLoader
       'Image Hover':               ImageHover
-      'Comment Expansion':         ExpandComment
       'Thread Expansion':          ExpandThread
       'Thread Excerpt':            ThreadExcerpt
       'Favicon':                   Favicon
@@ -134,8 +129,6 @@ Main =
       'Keybinds':                  Keybinds
       'Show Dice Roll':            Dice
       'Banner':                    Banner
-      'Infinite Scrolling':        InfiniScroll
-
     # c.timeEnd 'All initializations'
 
     $.on d, 'AddCallback', Main.addCallback
@@ -177,7 +170,7 @@ Main =
       attributeFilter: ['href']
 
   initReady: ->
-    if ['4chan - Temporarily Offline', '4chan - 404 Not Found'].contains d.title
+    if d.title in ['4chan - Temporarily Offline', '4chan - 404 Not Found']
       if Conf['404 Redirect'] and g.VIEW is 'thread'
         href = Redirect.to 'thread',
           boardID:  g.BOARD.ID
@@ -189,102 +182,79 @@ Main =
     # Something might have gone wrong!
     Main.initStyle()
 
-    if board = $ '.board'
-      threads = []
-      posts   = []
+    if g.VIEW is 'thread'
+      Main.initThread() 
+    else
+      $.event '4chanXInitFinished'
 
-      for threadRoot in $$ '.board > .thread', board
-        thread = new Thread +threadRoot.id[1..], g.BOARD
-        threads.push thread
-        for postRoot in $$ '.thread > .postContainer', threadRoot
-          try
-            posts.push new Post postRoot, thread, g.BOARD
-          catch err
-            # Skip posts that we failed to parse.
-            unless errors
-              errors = []
-            errors.push
-              message: "Parsing of Post No.#{postRoot.id.match(/\d+/)} failed. Post will be skipped."
-              error: err
-      Main.handleErrors errors if errors
+    if styleSelector = $.id 'styleSelector'
+      passLink = $.el 'a',
+        textContent: '4chan Pass'
+        href: 'javascript:;'
+      $.on passLink, 'click', ->
+        window.open '//sys.4chan.org/auth',
+          'This will steal your data.'
+          'left=0,top=0,width=500,height=255,toolbar=0,resizable=0'
+      $.before styleSelector.previousSibling, [$.tn '['; passLink, $.tn ']\u00A0\u00A0']
 
-      Main.callbackNodes Thread, threads
-      Main.callbackNodesDB Post, posts, ->
-        $.event '4chanXInitFinished'
-
-      if styleSelector = $.id 'styleSelector'
-        passLink = $.el 'a',
-          textContent: '4chan Pass'
-          href: 'javascript:;'
-        $.on passLink, 'click', ->
-          window.open '//sys.4chan.org/auth',
-            'This will steal your data.'
-            'left=0,top=0,width=500,height=255,toolbar=0,resizable=0'
-        $.before styleSelector.previousSibling, [$.tn '['; passLink, $.tn ']\u00A0\u00A0']
-
-      return
+    <% if (type === 'userscript') { %>
+    GMver = GM_info.version.split '.'
+    for v, i in "<%= meta.min.greasemonkey %>".split '.'
+      continue if v is GMver[i]
+      (v < GMver[i]) or new Notice 'warning', "Your version of Greasemonkey is outdated (v#{GM_info.version} instead of v<%= meta.min.greasemonkey %> minimum) and <%= meta.name %> may not operate correctly.", 30
+      break
+    <% } %>
 
     try
       localStorage.getItem '4chan-settings'
     catch err
-      new Notice 'warning', 'Cookies need to be enabled on 4chan for <%= meta.name %> to properly function.', 30
-      Main.disableReports = true
+      new Notice 'warning', 'Cookies need to be enabled on 4chan for <%= meta.name %> to operate properly.', 30
 
-    $.event '4chanXInitFinished'
-
-  callbackNodes: (klass, nodes) ->
-    # get the nodes' length only once
-    len = nodes.length
-    for callback in klass.callbacks
-      # c.profile callback.name
-      i = 0
-      while i < len
-        node = nodes[i++]
-        try
-          callback.cb.call node
-        catch err
-          errors = [] unless errors
-          errors.push
-            message: "\"#{callback.name}\" crashed on #{klass.name} No.#{node} (/#{node.board}/)."
-            error: err
-      # c.profileEnd callback.name
+  initThread: ->
+    return unless threadRoot = $ '.thread'
+    thread = new Thread +threadRoot.id[1..], g.BOARD
+    posts  = []
+    for postRoot in $$ '.thread > .postContainer', threadRoot
+      try
+        posts.push new Post postRoot, thread, g.BOARD, {isOriginalMarkup: true}
+      catch err
+        # Skip posts that we failed to parse.
+        errors = [] unless errors
+        errors.push
+          message: "Parsing of Post No.#{postRoot.id.match /\d+/} failed. Post will be skipped."
+          error: err
     Main.handleErrors errors if errors
 
+    Main.callbackNodes Thread, [thread]
+    Main.callbackNodesDB Post, posts, ->
+      $.event '4chanXInitFinished'
+
+  callbackNodes: (klass, nodes) ->
+    i = 0
+    cb = klass.callbacks
+    while node = nodes[i++]
+      cb.execute node
+    return
+
   callbackNodesDB: (klass, nodes, cb) ->
-    queue = []
     errors = null
-
-    func = (node) ->
-      for callback in klass.callbacks
-        try
-          callback.cb.call node
-        catch err
-          errors = [] unless errors
-          errors.push
-            message: "\"#{callback.name}\" crashed on #{klass.name} No.#{node} (/#{node.board}/)."
-            error: err
-      # finish
-      unless queue.length
-        Main.handleErrors errors if errors
-        cb() if cb
-
-    softTask =  ->
-      node = queue.shift()
-      func node
-      return unless queue.length
-      unless queue.length % 7
-        setTimeout softTask, 0
-      else
-        softTask()
-
-    # get the nodes' length only once
-    len    = nodes.length
+    len    = 0
     i      = 0
 
-    while i < len
+    cbs = klass.callbacks
+    fn = ->
       node = nodes[i++]
-      queue.push node
+      cbs.execute node
+      i % 25
 
+    softTask = ->
+      while fn()
+        if len is i
+          cb() if cb
+          return
+      setTimeout softTask, 0 
+
+    len = nodes.length
     softTask()
 
   addCallback: (e) ->
@@ -326,17 +296,12 @@ Main =
     new Notice 'error', [div, logs], 30
 
   parseError: (data) ->
-    Main.logError data
+    c.error data.message, data.error.stack
     message = $.el 'div',
       textContent: data.message
     error = $.el 'div',
       textContent: data.error
     [message, error]
-
-  errors: []
-  logError: (data) ->
-    c.error data.message, data.error.stack
-    Main.errors.push data
 
   isThisPageLegit: ->
     # 404 error page or similar.
